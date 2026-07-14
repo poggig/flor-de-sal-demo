@@ -1,0 +1,34 @@
+{
+  "frames": {
+    "hero_nesta_idle_0": {
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "w": 48,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 48,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 48,
+        "h": 64
+      }
+    }
+  },
+  "meta": {
+    "app": "game-studio-auto/rd-sheet-atlas",
+    "image": "hero_nesta.png",
+    "format": "RGBA8888",
+    "size": {
+      "w": 48,
+      "h": 64
+    },
+    "scale": "1"
+  }
+}

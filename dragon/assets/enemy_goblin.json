@@ -1,0 +1,34 @@
+{
+  "frames": {
+    "enemy_goblin_idle_0": {
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "w": 44,
+        "h": 60
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 44,
+        "h": 60
+      },
+      "sourceSize": {
+        "w": 44,
+        "h": 60
+      }
+    }
+  },
+  "meta": {
+    "app": "game-studio-auto/rd-sheet-atlas",
+    "image": "enemy_goblin.png",
+    "format": "RGBA8888",
+    "size": {
+      "w": 44,
+      "h": 60
+    },
+    "scale": "1"
+  }
+}
