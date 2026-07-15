@@ -19,6 +19,7 @@ class Level4 extends DragonScene {
     this.bgImage = 'bg_masquerade';
     this.bgBot = 0x0d2847;              // deep-blue night hall
     this.tileTextures = { 1: 'tile_castle', 2: 'tile_castle', 3: 'tile_castle', 5: 'tile_castle' };
+    this.npcSprite = 'npc_noble';        // masquerade guests wear the noble/masked sprite
   }
   enter() { this.bAct1(); }
 

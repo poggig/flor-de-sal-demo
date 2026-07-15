@@ -156,11 +156,18 @@ class DragonScene extends GameScene {
       this._npcObjs = npcs.map(n => {
         const x = n.x, y = (n.y != null ? n.y : gy);
         const cont = this.add.container(x, y).setDepth(2);
-        const g = this.add.graphics();
-        g.fillStyle(0x2a2a3a, 1).fillRect(-7, -30, 14, 22);   // robed body
-        g.fillStyle(0xd8b088, 1).fillRect(-6, -42, 12, 12);   // head
-        g.fillStyle(0x3a2a20, 1).fillRect(-6, -44, 12, 4);    // hair
-        cont.add(g);
+        // Real RD NPC sprite (feet at the ground), else a drawn-shape fallback.
+        const spriteKey = n.sprite || this.npcSprite || 'npc_villager';
+        if (this.textures.exists(spriteKey)) {
+          const img = this.add.image(0, 0, spriteKey).setOrigin(0.5, 1).setScale(0.82);
+          cont.add(img);
+        } else {
+          const g = this.add.graphics();
+          g.fillStyle(0x2a2a3a, 1).fillRect(-7, -30, 14, 22);   // robed body
+          g.fillStyle(0xd8b088, 1).fillRect(-6, -42, 12, 12);   // head
+          g.fillStyle(0x3a2a20, 1).fillRect(-6, -44, 12, 4);    // hair
+          cont.add(g);
+        }
         const label = this.add.text(x, y - 52, Lang.t(n.name), { fontFamily: 'monospace', fontSize: '9px', color: '#e8d8a8' }).setOrigin(0.5).setDepth(3);
         const prompt = this.add.text(x, y - 64, '', { fontFamily: 'monospace', fontSize: '11px', color: '#ffee88' }).setOrigin(0.5).setDepth(3);
         return { x, y, name: n.name, lines: n.lines, talked: false, cont, label, prompt };
@@ -247,10 +254,14 @@ class DragonScene extends GameScene {
   // by updateActors — the level only calls spawnDarkZones() once (after spawnEnemies).
   spawnDarkZones() {
     this._darkZones = [];
-    this._darkOverlay = this.add.rectangle(0, 0, CW, CH, 0x000000, 0.93).setOrigin(0, 0).setScrollFactor(0).setDepth(15).setVisible(false);
-    this._darkHole = this.add.graphics().setScrollFactor(0).setVisible(false);
-    const mask = this._darkHole.createGeometryMask(); mask.invertAlpha = true;   // overlay shows OUTSIDE the holes
-    this._darkOverlay.setMask(mask);
+    // WebGL-safe darkness: a RenderTexture filled black with circular light-holes ERASED
+    // out of it (Phaser 4 WebGL dropped GameObject geometry masks — F: Mask.setMask warning).
+    if (!this.textures.exists('__darkHole')) {
+      const gg = this.make.graphics({ add: false });
+      gg.fillStyle(0xffffff, 1); gg.fillCircle(320, 320, 320);
+      gg.generateTexture('__darkHole', 640, 640); gg.destroy();
+    }
+    this._darkOverlay = this.add.renderTexture(0, 0, CW, CH).setOrigin(0, 0).setScrollFactor(0).setDepth(15).setVisible(false);
     this.enemies.forEach(e => {
       if (e.customType === 'darkmantle') {
         e._darkUsed = false;
@@ -266,13 +277,13 @@ class DragonScene extends GameScene {
     this._darkZones.forEach(z => z.life -= dt);
     this._darkZones = this._darkZones.filter(z => z.life > 0);
     const active = this._darkZones.length > 0;
-    if (this._darkOverlay) this._darkOverlay.setVisible(active);
-    const g = this._darkHole; if (!g) return;
-    g.clear();
+    const rt = this._darkOverlay; if (!rt) return;
+    rt.setVisible(active);
     if (!active) return;
     const cam = this.cameras.main;
-    g.fillStyle(0xffffff, 1);
-    for (const z of this._darkZones) g.fillCircle(z.x - cam.scrollX, z.y - cam.scrollY, z.r);   // screen-space holes
+    rt.clear();
+    rt.fill(0x000000, 0.93);
+    for (const z of this._darkZones) rt.erase('__darkHole', z.x - cam.scrollX - 320, z.y - cam.scrollY - 320);   // screen-space holes
   }
 
   // ── AIR / OXYGEN GAUGE (Lv2 underwater survival) ───────────────────────────

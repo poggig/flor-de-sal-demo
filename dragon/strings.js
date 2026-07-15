@@ -19,6 +19,8 @@ Lang.strings = {
     freeze_shot: 'FREEZE SHOT!', bone_shot: 'BONE SHOT!', party_healed: 'PARTY HEALED!',
     ult_ready: '[X] Ultimate ready', ult_used: '[X] Ultimate used', air: 'AIR', survive: 'SURVIVE',
     fish_caught: 'Fish caught!', fish_missed: 'Missed!', fish_round: 'Round', muted: '[M] MUTED', music: '[M] music',
+    talk_prompt: '[Z] Talk',
+    fishing_hint: 'Press SPACE when the marker hits the green zone!',
     the_end: 'THE END', credits: 'Chronicles of Azurerune — Book One Complete', press_any: 'Press SPACE for title',
     narrator: 'Narrator', tutorial: 'Tutorial', guard: 'Guard',
     // ── Speaker display names (engine renders d(speaker,key) via Lang.t(speaker)) ──

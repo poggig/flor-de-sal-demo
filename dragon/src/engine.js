@@ -29,7 +29,7 @@
 
 // ── World constants (parity with the hand-rolled engine) ──
 const T = 16, CW = 800, CH = 480;
-const GAME_VERSION = 'phaser-1.12.0';
+const GAME_VERSION = 'phaser-1.13.0';
 // The old engine's stat numbers are per-1/60s-frame (spd 2.1 px/frame, jf -9,
 // GR 0.6, MF 10). Arcade works in px/second, so we scale by FPS. Keeping data.js
 // numbers in per-frame units makes the M6 stat port a copy-paste.
@@ -53,12 +53,59 @@ function actorScaleFor(kind, type) {
   return 1;
 }
 function applyActorScale(spr, bodyW, bodyH, s) {
+  // Remember the base transform so PROCEDURAL animation (phaser-1.13.0) can overlay a
+  // small visual squash/sway on top without losing the actor's real scale/body dims.
+  spr._baseScale = s || 1; spr._baseBW = bodyW; spr._baseBH = bodyH;
   if (!s || s === 1) return;
   spr.setScale(s);
   // setSize AFTER setScale is itself multiplied by the sprite scale (probe GTM-8),
   // so pass the BASE dims → body world = bodyW*s × bodyH*s, auto-centered in the
   // scaled frame → a full-frame body stays flush on the ground (rest-gap 0).
   spr.body.setSize(bodyW, bodyH);
+}
+
+// ── PROCEDURAL ANIMATION (GTM-10 · phaser-1.13.0) ──
+// "Animate the motion ourselves." RD is great at a single clean CHARACTER POSE but its
+// frame-by-frame animation is jerky; so a game can ship ONE crisp pose per actor and let
+// the engine breathe life into it with smooth 60fps transforms keyed to the actor's STATE —
+// idle breathes, run bobs + sways, jump stretches, attack lunges, dash streaks. Visual only:
+// applies setScale (small squash/stretch, ≤8% → negligible body change) + setAngle (Arcade's
+// AABB ignores rotation, so leaning never disturbs collision) on top of the base actorScale.
+// Enabled by GAME_CONFIG.procAnim (true → all heroes+enemies; or { hero:true, enemy:false }).
+// Absent → no-op (byte-identical). Pairs with single-frame atlases (no `anims` frame-swap).
+function procEnabled(kind) {
+  const c = cfg('procAnim', false);
+  if (c === true) return true;
+  if (c && typeof c === 'object') return !!c[kind];
+  return false;
+}
+// Compute (scaleX, scaleY, angleDeg) for a state at time t (facing dir = rt?1:-1). Returns
+// multipliers around 1 and an absolute lean angle (already facing-corrected by the caller).
+function procPose(st, t, atkPhase) {
+  switch (st) {
+    case 'run': { const b = Math.abs(Math.sin(t * 11)); return { sx: 1 - b * 0.05 + 0.02, sy: 1 + b * 0.07 - 0.03, ang: Math.sin(t * 11) * 5 }; }
+    case 'jump': return { sx: 0.9, sy: 1.12, ang: -7 };
+    case 'fall': return { sx: 1.07, sy: 0.93, ang: 4 };
+    case 'dash': return { sx: 1.22, sy: 0.86, ang: -12 };
+    case 'attack': case 'skill': { const p = Math.max(0, Math.min(1, atkPhase)); const punch = Math.sin(p * Math.PI); return { sx: 1 + punch * 0.14, sy: 1 - punch * 0.06, ang: -18 * punch }; }
+    default: { const br = Math.sin(t * 3); return { sx: 1 - br * 0.012, sy: 1 + br * 0.02, ang: Math.sin(t * 1.4) * 1.2 }; }   // idle breathe
+  }
+}
+function applyProc(spr, dt) {
+  spr._procT = (spr._procT || 0) + dt;
+  const dir = spr.rt ? 1 : -1;
+  // Heroes carry an explicit `st`; enemies don't — derive it from the attack telegraph + speed.
+  let st = spr.st;
+  if (st === undefined) st = (spr._atkAnimT > 0 ? 'attack' : (spr.body && Math.abs(spr.body.velocity.x) > 8 ? 'run' : 'idle'));
+  let atkPhase = 0;
+  if (spr.st === 'attack' && spr.atkT != null) atkPhase = 1 - spr.atkT / 0.3;
+  else if (spr.st === 'skill' && spr.skillT != null) atkPhase = 1 - spr.skillT / 0.5;
+  else if (spr._atkAnimT > 0) atkPhase = 1 - spr._atkAnimT / ENEMY_ATTACK_POSE;
+  const p = procPose(st, spr._procT, atkPhase);
+  const base = spr._baseScale || 1;
+  spr.setScale(base * p.sx, base * p.sy);             // squash/stretch only; facing stays via setFlipX
+  spr.setAngle(p.ang * dir);                          // lean is facing-corrected
+  if (spr.body) spr.body.setSize(spr._baseBW || spr.body.width, spr._baseBH || spr.body.height);   // keep collision box fixed
 }
 
 // ── SWIM MODE tunables (E-b, M7 · phaser-1.3.0) ──
@@ -1292,6 +1339,10 @@ class GameScene extends Phaser.Scene {
     // each actor's syncAnim early-returns when it has no atlas anim, so mixed
     // atlas/procedural is safe.
     if (cfg('anims', false)) { this.heroes.forEach(h => h.syncAnim()); this.enemies.forEach(e => e.on && e.syncAnim()); }
+    // PROCEDURAL animation (phaser-1.13.0): breathe life into single-pose actors with
+    // smooth transforms keyed to state. No-op unless GAME_CONFIG.procAnim is set.
+    if (procEnabled('hero')) this.heroes.forEach(h => h.on && applyProc(h, dt));
+    if (procEnabled('enemy')) this.enemies.forEach(e => e.on && applyProc(e, dt));
   }
   _autoSwapOnDeath() {
     const idx = this.heroes.findIndex(h => h.on);

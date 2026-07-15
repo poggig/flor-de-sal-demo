@@ -65,9 +65,9 @@ class Level5 extends DragonScene {
     this.spawnParty(60, gy, PARTY5);
     const es = [
       new Enemy(this, 800, gy, 28, 40, 'Mercenary', '#888888', EHP.soldier, 13, 'chase', 'castle_soldier'),
-      new Enemy(this, 1000, gy, 28, 40, 'Mercenary', '#999999', EHP.soldier, 13, 'chase', 'castle_knight'),
+      new Enemy(this, 1000, gy, 28, 40, 'Mercenary', '#999999', EHP.soldier, 13, 'chase', 'knight'),
       new Enemy(this, 1400, gy, 28, 40, 'Mercenary', '#888888', EHP.soldier, 13, 'patrol', 'castle_soldier'),
-      new Enemy(this, 1800, gy, 28, 40, 'Mercenary', '#999999', EHP.soldier, 13, 'chase', 'castle_knight'),
+      new Enemy(this, 1800, gy, 28, 40, 'Mercenary', '#999999', EHP.soldier, 13, 'chase', 'knight'),
       new Enemy(this, 2200, gy, 28, 40, 'Mercenary', '#777777', EHP.soldier, 13, 'patrol', 'castle_archer'),
       new Enemy(this, 2600, gy, 28, 40, 'Mercenary', '#777777', EHP.soldier, 13, 'patrol', 'castle_archer'),
       new Enemy(this, 2800, gy, 28, 40, 'Mercenary', '#aaaaaa', EHP.soldier, 13, 'chase', 'hideout_fighter'),

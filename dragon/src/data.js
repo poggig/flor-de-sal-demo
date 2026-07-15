@@ -75,7 +75,11 @@ const FallbackPalettes = {
 // - heroBody [22,64]: the hero collision body inside the 56×64 RD atlas cell (feet flush).
 const GAME_CONFIG = {
   langButtons: 'off', scrollsPerRun: 2, physics: 'arcade', hazardDamage: true,
-  anims: { fps: 8, clips: { attack: { repeat: 0, fps: 12 }, idle: { fps: 3 } } },
+  // PROCEDURAL animation (phaser-1.13.0): each hero/enemy ships ONE clean RD pose; the
+  // engine animates the MOTION with smooth 60fps transforms (idle breathe, walk bob/sway,
+  // attack lunge, jump stretch) — RD makes the character, we make it move. Fixes the clunky
+  // 8-frame RD animations + the static-vs-animated inconsistency (all actors animate the same way).
+  procAnim: { hero: true, enemy: true },
   actorScale: { hero: 1.2, enemy: 1.2, kansaldi: 1.6, ogre: 1.5, boilerdrak: 1.3, spectator: 1.35, draconian_sivak: 1.4, draconian_kapak: 1.25, bakaris: 1.2 },
   heroBody: [22, 64],
   bgParallax: 0.5,
@@ -95,7 +99,9 @@ const ASSET_MANIFEST = [
   _enemyAtlas('goblin'), _enemyAtlas('castle_soldier'), _enemyAtlas('castle_archer'), _enemyAtlas('knight'),
   _enemyAtlas('hideout_fighter'), _enemyAtlas('mimic'), _enemyAtlas('darkmantle'), _enemyAtlas('draconian'),
   _enemyAtlas('spectator'), _enemyAtlas('lib_censor'), _enemyAtlas('boilerdrak'), _enemyAtlas('ogre'),
-  _enemyAtlas('bakaris'), _enemyAtlas('kansaldi'),
+  _enemyAtlas('bakaris'), _enemyAtlas('kansaldi'), _enemyAtlas('animated_sword'), _enemyAtlas('gauntlet'),
+  _enemyAtlas('draconian_sivak'), _enemyAtlas('draconian_kapak'),
+  _img('npc_villager', 'npc_villager.png'), _img('npc_noble', 'npc_noble.png'),
   _img('bg_arena', 'bg_arena.png'), _img('bg_river', 'bg_river.png'), _img('bg_festival', 'bg_festival.png'),
   _img('bg_library', 'bg_library.png'), _img('bg_masquerade', 'bg_masquerade.png'), _img('bg_ruins', 'bg_ruins.png'),
   _img('tile_castle', 'tile_castle.png'), _img('tile_garden', 'tile_garden.png'),

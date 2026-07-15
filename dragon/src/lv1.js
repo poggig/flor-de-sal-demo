@@ -5,7 +5,7 @@
 //                        goblins. Win = clear the arena.
 //   A2 BLOOD AND GRUDGE — cutscene (Nesta scars Bakaris' face).
 //   A3 HALLWAY RUMORS   — social walk: talk to 4 NPCs, then reach the door.
-//   A4 NIGHT INFILTRATION — platform stealth past a castle_knight guard + 6 mimics.
+//   A4 NIGHT INFILTRATION — platform stealth past a knight guard + 6 mimics.
 //   A5 DIVERGING PATHS  — cutscene → Level 2.
 // Party of 5 (Nesta present → her fox familiar trails her). Classic-script global.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -88,7 +88,7 @@ class Level1 extends DragonScene {
     const gy = (H - 4) * T;
     this.spawnParty(10 * T, gy, PARTY5);
 
-    const guard = new Enemy(this, 900, gy, 28, 40, 'Guard', '#4466aa', EHP.soldier, 11, 'patrol', 'castle_knight');
+    const guard = new Enemy(this, 900, gy, 28, 40, 'Guard', '#4466aa', EHP.soldier, 11, 'patrol', 'knight');
     guard.spd = 0.8;
     this.spawnEnemies([
       guard,
@@ -99,7 +99,7 @@ class Level1 extends DragonScene {
       new Enemy(this, 2900, gy, 24, 28, 'Mimic Book', '#6b3a8c', EHP.soldier, 14, 'patrol', 'mimic'),
       new Enemy(this, 3400, gy, 24, 28, 'Mimic Book', '#6b3a8c', EHP.soldier, 14, 'patrol', 'mimic'),
     ]);
-    this.setupStealth('castle_knight');
+    this.setupStealth('knight');
     this.familiars(gy);
     this.setHint('l1a4_hint');
     if (retry) { this.live = true; return; }
