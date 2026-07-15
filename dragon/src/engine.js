@@ -29,7 +29,7 @@
 
 // ── World constants (parity with the hand-rolled engine) ──
 const T = 16, CW = 800, CH = 480;
-const GAME_VERSION = 'phaser-1.11.0';
+const GAME_VERSION = 'phaser-1.12.0';
 // The old engine's stat numbers are per-1/60s-frame (spd 2.1 px/frame, jf -9,
 // GR 0.6, MF 10). Arcade works in px/second, so we scale by FPS. Keeping data.js
 // numbers in per-frame units makes the M6 stat port a copy-paste.
@@ -518,7 +518,14 @@ class Hero extends Phaser.Physics.Arcade.Sprite {
     this._skillMult = s.skillMult || 2; this._atkRange = s.atkRange || 30; this._skillRange = s.skillRange || 50;
     this.dashDur = s.dashDur || 0.12; this._isHealer = s.isHealer || false; this._healAmt = s.healAmt || 0;
     this._ranged = s.ranged || false;   // ranged heroes fire a projectile on attack (no melee box)
-    this._rUsed = false;
+    // PERSONALIZED ABILITY descriptors (phaser-1.12.0) — content-agnostic: the GAME's
+    // HERO_STATS assigns each hero a `skill` (Q) and `ult` (X) descriptor; the engine
+    // dispatches them to generic primitives. Absent → legacy generic skill + no ultimate
+    // (byte-identical to pre-1.12.0). See _useSkill / GameScene.triggerUltimate.
+    this._skill = s.skill || null; this._ult = s.ult || null;
+    this._rUsed = false;                // ultimate charge (once per act; reset here on act (re)build)
+    this._buffActive = false; this._buffT = 0; this._buffCd = 0;   // Titan-Form-style self-buff
+    this._invis = false; this._invisT = 0;                          // party-invisible (Nesta ult)
   }
   control(dt) {
     if (!this.on) return;
@@ -526,6 +533,11 @@ class Hero extends Phaser.Physics.Arcade.Sprite {
     if (this.atkCD > 0) this.atkCD -= dt;
     if (this.dashCD > 0) this.dashCD -= dt;
     if (this.skillCD > 0) this.skillCD -= dt;
+    // Personalized-ability timers (phaser-1.12.0) — tick for EVERY hero (controlled or
+    // companion) so a buff/invisibility keeps counting after a swap. No-op when unused.
+    if (this._buffCd > 0) this._buffCd -= dt;
+    if (this._buffActive) { this._buffT -= dt; if (this._buffT <= 0) { this._buffActive = false; this.mhp = this._preBuffMhp; this.hp = Math.min(this.hp, this.mhp); this.atkDmg = this._preBuffDmg; } }
+    if (this._invis) { this._invisT -= dt; if (this._invisT <= 0) { this._invis = false; this.setAlpha(1); } }
     // ALT PHYSICS MODES (E-b): buoyant/lift/vehicle control replaces the platformer
     // model. Companions (ctrl:false) do cooldowns only here and are driven by Companion.
     if (this._swim) { if (this.ctrl) this._swimControl(dt); return; }
@@ -648,18 +660,62 @@ class Hero extends Phaser.Physics.Arcade.Sprite {
     else this.st = Math.abs(b.velocity.x) > 8 ? 'run' : 'idle';
     this.setTint(this.st === 'attack' || this.st === 'skill' ? 0xffee88 : (this.inv > 0 && (((this.inv * 12) | 0) % 2) ? 0xff8888 : 0xffffff));
   }
+  // Dispatch the hero's personalized SKILL (Q) by its descriptor kind (phaser-1.12.0);
+  // no descriptor → legacy heal(healer)/melee. Content-agnostic primitives:
+  //   buff  — self-buff (mhp×/atk×) for a duration then a cooldown (Titan Form)
+  //   heal  — heal every living hero by amt
+  //   proj  — fire a straight HeroProj (ranged bolt)
+  //   mega  — fire a homing MegaProj orb toward the nearest enemy
+  //   melee — the wide skill-range melee box (default; atkBox handles the hit)
   _useSkill() {
+    const sk = this._skill;
+    if (sk && sk.kind === 'buff') {                       // TITAN FORM — self toggle
+      if (this._buffActive || this._buffCd > 0) { this.skillCD = 0.3; return; }
+      this.skillCD = 3.0;
+      this._buffActive = true; this._buffT = sk.dur || 20; this._buffCd = sk.cd || 30;
+      this._preBuffMhp = this.mhp; this._preBuffDmg = this.atkDmg;
+      this.mhp = Math.round(this.mhp * (sk.mhpMul || 2));
+      this.hp = Math.min(this.hp + this._preBuffMhp, this.mhp);
+      this.atkDmg = Math.round(this.atkDmg * (sk.dmgMul || 2));
+      if (G.sc._float) G.sc._float('titan_form', this.x, this.y - 30, '#ff88ff');
+      return;
+    }
     this.skillCD = 3.0;
-    if (this._isHealer) {
+    if ((sk && sk.kind === 'heal') || (!sk && this._isHealer)) {   // PARTY HEAL
       this.st = 'skill'; this.skillT = 0.5;
-      const amt = this._healAmt || 25;
+      const amt = (sk && sk.amt) || this._healAmt || 25;
       G.sc.heroes.forEach(h => { if (h.on) h.hp = Math.min(h.mhp, h.hp + amt); });
       G.sc._healFlash = 1.0;
-    } else { this.st = 'skill'; this.skillT = 0.5; this._swingHit.clear(); }
+      if (G.sc._float) G.sc._float('party_healed', this.x, this.y - 30, '#66ee88');
+      return;
+    }
+    if (sk && sk.kind === 'mega') {                       // RANGED SKILL ORB (nesta)
+      this.st = 'skill'; this.skillT = 0.5;
+      this._fireMega(sk.dmgMul || 2, { color: sk.color || 0x9955ff, radius: sk.radius || 24 });
+      return;
+    }
+    if (sk && sk.kind === 'proj') {                       // RANGED SKILL BOLT (elber)
+      this.st = 'skill'; this.skillT = 0.5;
+      const dir = this.rt ? 1 : -1;
+      G.sc.projectiles.push(new HeroProj(this.scene, this.x + dir * (this.body.width / 2 + 4), this.y, dir, Math.round(this.atkDmg * (sk.dmgMul || 2)), sk.color || 0xffdd66));
+      return;
+    }
+    this.st = 'skill'; this.skillT = 0.5; this._swingHit.clear();   // MELEE skill box (kote/legacy)
+  }
+  // Fire a homing MegaProj toward the nearest living enemy (or straight ahead if none).
+  _fireMega(dmgMul, opts = {}) {
+    const t = G.sc._nearestEnemy ? G.sc._nearestEnemy(this.x, this.y) : null;
+    const dir = this.rt ? 1 : -1;
+    const tx = t ? t.x : this.x + dir * 400, ty = t ? t.y : this.y;
+    const dx = tx - this.x, dy = ty - this.y, len = Math.hypot(dx, dy) || 1;
+    const sp = (opts.speed || 3) * FPS;
+    G.sc.projectiles.push(new MegaProj(this.scene, this.x, this.y, dx / len * sp, dy / len * sp, Math.round(this.atkDmg * dmgMul), opts));
   }
   atkBox() {
     if (this.st !== 'attack' && this.st !== 'skill') return null;
     if (this.st === 'skill' && this._isHealer) return null;
+    // non-melee skills (buff/heal/proj/mega) do their work in _useSkill — no melee box
+    if (this.st === 'skill' && this._skill && this._skill.kind !== 'melee') return null;
     if (this._ranged && this.st === 'attack') return null; // ranged: projectile, not a melee box
     const r = this.st === 'skill' ? this._skillRange : this._atkRange;
     const b = this.body;
@@ -676,12 +732,12 @@ class Hero extends Phaser.Physics.Arcade.Sprite {
 
 // ═══ HERO PROJECTILE (ranged attack — Arcade body, no gravity) ═══
 class HeroProj {
-  constructor(scene, x, y, dir, dmg, color) {
+  constructor(scene, x, y, dir, dmg, color, vy) {
     this.dmg = dmg; this.on = true; this.life = 2.0;
-    this.go = scene.add.rectangle(x, y, 12, 4, color || 0xaaddff);
+    this.go = scene.add.rectangle(x, y, 12, 4, color || 0xaaddff).setDepth(5);
     scene.physics.add.existing(this.go);
     this.go.body.setAllowGravity(false);
-    this.go.body.setVelocityX(dir * 9 * FPS);   // 9 px/frame, parity with the old engine
+    this.go.body.setVelocity(dir * 9 * FPS, vy || 0);   // 9 px/frame horiz; vy for the barrage fan
     scene.physics.add.collider(this.go, scene.solidList, () => this.kill());
   }
   update(dt, enemies) {
@@ -720,6 +776,38 @@ class EnemyProj {
       if (!h.on) continue;
       const hb = h.body;
       if (b.x < hb.x + hb.width && b.x + b.width > hb.x && b.y < hb.y + hb.height && b.y + b.height > hb.y) { h.hurt(this.dmg); return this.kill(); }
+    }
+  }
+  kill() { if (!this.on) return; this.on = false; if (this.go) { this.go.destroy(); this.go = null; } }
+}
+
+// ═══ MEGA PROJECTILE (ability orb — homes toward a target, PASSES THROUGH walls) ═══
+// The heavy ultimate/skill orb (freeze shot, bone shot, ranged skill): a large slow orb
+// that flies toward a target point and hits the first enemy within its radius, applying an
+// optional on-hit SLOW (enemy spd × mul for slowDur). Unlike HeroProj it ignores terrain —
+// an ultimate reads as unstoppable. Content-agnostic; the game assigns it via a hero's
+// `ult`/`skill` descriptor (phaser-1.12.0). Push into scene.projectiles (same update loop).
+class MegaProj {
+  constructor(scene, x, y, vx, vy, dmg, opts = {}) {
+    this.dmg = dmg; this.on = true; this.life = opts.life || 3.5; this.rr = opts.radius || 22;
+    this._slow = opts.slow || 0; this._slowDur = opts.slowDur || 3;
+    this.go = scene.add.circle(x, y, this.rr * 0.6, opts.color || 0xffcc44, 0.85).setDepth(6);
+    scene.physics.add.existing(this.go);
+    this.go.body.setAllowGravity(false);
+    this.go.body.setVelocity(vx, vy);
+  }
+  update(dt, enemies) {
+    if (!this.on) return;
+    this.life -= dt; if (this.life <= 0) return this.kill();
+    if (!this.go || !this.go.body) return;
+    const x = this.go.x, y = this.go.y;
+    for (const e of enemies) {
+      if (!e.on) continue;
+      if (Math.abs(e.x - x) < this.rr && Math.abs(e.y - y) < this.rr) {
+        e.hurt(this.dmg);
+        if (this._slow && e.on) e.applySlow(this._slow, this._slowDur);
+        return this.kill();
+      }
     }
   }
   kill() { if (!this.on) return; this.on = false; if (this.go) { this.go.destroy(); this.go = null; } }
@@ -770,7 +858,7 @@ class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.ai = ai; this._aiOrig = ai; this.customType = type;
     this.setOrigin(0.5, 0.5); this.body.setSize(w, h); this.body.setMaxVelocity(9999, MAX_FALL);
     applyActorScale(this, w, h, actorScaleFor('enemy', type));
-    this.on = true; this.rt = true; this.dir = 1; this.pt = 0; this.akt = 0; this.inv = 0; this._atkAnimT = 0;
+    this.on = true; this.rt = true; this.dir = 1; this.pt = 0; this.akt = 0; this.inv = 0; this._atkAnimT = 0; this._slowT = 0;
     this.spd = 0.7; this.ag = 130; this._phase2 = ai === 'boss' ? false : undefined;
     this._anims = Art.animsFor(scene, 'enemy', type);   // atlas walk cycle / per-state clips if GAME_CONFIG.anims + multi-frame enemy atlas
   }
@@ -789,15 +877,20 @@ class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (!this.on) return;
     if (this.inv > 0) this.inv -= dt;
     if (this._atkAnimT > 0) this._atkAnimT -= dt;   // strike-pose hold (visual only)
+    if (this._slowT > 0) { this._slowT -= dt; if (this._slowT <= 0 && this._spdBase !== undefined) this.spd = this._spdBase; }   // freeze-slow expiry (phaser-1.12.0)
     this.akt -= dt;
+    // PARTY-INVISIBLE (phaser-1.12.0): patrol/chase can't perceive an invisible hero, so
+    // they don't aggro/track/melee it — but 'boss' and 'static' STILL hit it (the original's
+    // deliberate asymmetry: invisibility beats mooks + stealth guards, not bosses/turrets).
+    const visible = hero && !hero._invis;
     const dxh = hero ? Math.abs(this.x - hero.x) : 999;
     if (this.ai === 'patrol') {
       if (this.body.blocked.left) this.dir = 1; else if (this.body.blocked.right) this.dir = -1;
       this.pt += dt; if (this.pt > 2.5) { this.dir *= -1; this.pt = 0; }
       this.body.setVelocityX(this.spd * FPS * this.dir); this.rt = this.dir > 0; this.setFlipX(!this.rt);
-      if (dxh < this.ag) this.ai = 'chase';
+      if (dxh < this.ag && visible) this.ai = 'chase';
     } else if (this.ai === 'chase') {
-      if (dxh > 280) { this.ai = this._aiOrig === 'chase' ? 'patrol' : this._aiOrig; this.body.setVelocityX(0); }
+      if (dxh > 280 || !visible) { this.ai = this._aiOrig === 'chase' ? 'patrol' : this._aiOrig; this.body.setVelocityX(0); }
       else { const dd = hero.x > this.x ? 1 : -1; this.body.setVelocityX(this.spd * FPS * 1.4 * dd); this.rt = dd > 0; this.setFlipX(!this.rt); }
     } else if (this.ai === 'static') {
       this.body.setVelocityX(0);
@@ -805,8 +898,14 @@ class Enemy extends Phaser.Physics.Arcade.Sprite {
       const dd = hero.x > this.x ? 1 : -1; this.body.setVelocityX(this.spd * FPS * 1.8 * dd); this.rt = dd > 0; this.setFlipX(!this.rt);
       if (this._phase2 === false && this.hp <= this.mhp * 0.5) { this._phase2 = true; this.spd *= 1.4; this.setTint(0xff8844); }
     }
-    if (hero && this.akt <= 0 && this._overlaps(hero)) { hero.hurt(this.dmg); this.akt = 1.0; this._atkAnimT = ENEMY_ATTACK_POSE; }
+    // enemy-specific boss timers (stomp / fireball / teleport / fire-breath) — opt-in hook,
+    // no-op unless the game set a timer field on the instance (phaser-1.12.0).
+    if (this._bossBeh) this._bossBeh(dt, hero, visible);
+    const canHit = visible || this.ai === 'boss' || this.ai === 'static';
+    if (hero && canHit && this.akt <= 0 && this._overlaps(hero)) { hero.hurt(this.dmg); this.akt = 1.0; this._atkAnimT = ENEMY_ATTACK_POSE; }
   }
+  // On-hit slow (freeze shot): drop speed to spd×mul for `dur`s, restored on expiry.
+  applySlow(mul, dur) { if (this._spdBase === undefined) this._spdBase = this.spd; this.spd = this._spdBase * mul; this._slowT = dur; }
   _overlaps(o) {
     const a = this.body, b = o.body;
     return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
@@ -1131,6 +1230,39 @@ class GameScene extends Phaser.Scene {
   setHint(key) { this._hintKey = key; UI.setHint(key); }
   say(dlgs, cb) { this.freeze(); D.show(dlgs, () => { this.unfreeze(); if (cb) cb(); }); }
   enemiesAllDead() { return this.enemies.length > 0 && this.enemies.every(e => !e.on); }
+  // Nearest living enemy to a point (for homing MegaProj + ultimate targeting).
+  _nearestEnemy(x, y) { let best = null, bd = 1e9; for (const e of this.enemies) { if (!e.on) continue; const d = Math.abs(e.x - x); if (d < bd) { bd = d; best = e; } } return best; }
+  // Floating combat text (ability call-out): rises + fades. key is a Lang key or literal.
+  _float(key, x, y, color) {
+    const txt = (typeof Lang !== 'undefined' && Lang.t(key)) || key;
+    const t = this.add.text(x, y, txt, { fontFamily: 'monospace', fontSize: '15px', color: color || '#ffffff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 3 }).setOrigin(0.5).setDepth(60);
+    this.tweens.add({ targets: t, y: y - 28, alpha: 0, duration: 1100, ease: 'Quad.out', onComplete: () => t.destroy() });
+  }
+  // ULTIMATE (X) — dispatch the active hero's `ult` descriptor to a generic primitive
+  // (phaser-1.12.0). Once per act (_rUsed reset in applyStats on act (re)build). No-op if
+  // the hero has no `ult` descriptor → byte-identical for games that don't define ultimates.
+  triggerUltimate() {
+    const h = this.heroes[this.ai];
+    if (!h || !h.on || h._rUsed || !h._ult) return;
+    h._rUsed = true;
+    const u = h._ult, cx = h.x, cy = h.y, dir = h.rt ? 1 : -1;
+    if (u.kind === 'cleave') {
+      const r = u.radius || 200, mul = u.dmgMul || 3;
+      this.enemies.forEach(e => { if (e.on && Math.hypot(e.x - cx, e.y - cy) < r) e.hurt(h.atkDmg * mul); });
+      this._float(u.label || 'cleave', cx, cy - 30, '#ff88ff');
+    } else if (u.kind === 'barrage') {
+      const shots = u.shots || 5, mul = u.dmgMul || 2, spread = u.spread || 0.18, half = shots >> 1;
+      for (let i = -half; i <= half; i++) this.projectiles.push(new HeroProj(this, cx, cy, dir, Math.round(h.atkDmg * mul), u.color || 0xff6600, i * spread * 9 * FPS));
+      this._float(u.label || 'barrage', cx, cy - 30, '#ffaa44');
+    } else if (u.kind === 'invis') {
+      const dur = u.dur || 5;
+      this.heroes.forEach(hh => { if (hh.on) { hh._invis = true; hh._invisT = dur; hh.setAlpha(0.35); } });
+      this._float(u.label || 'party_invisible', cx, cy - 30, '#88ccff');
+    } else if (u.kind === 'mega') {
+      h._fireMega(u.dmgMul || 2, { color: u.color || 0xffcc44, radius: u.radius || 26, slow: u.slow || 0, slowDur: u.slowDur || 3, speed: u.speed || 3 });
+      this._float(u.label || 'ultimate', cx, cy - 30, u.slow ? '#66ccff' : '#e8e8d0');
+    }
+  }
 
   // ── Per-frame skeleton (called by update in fixed order) ──
   commonUpdateStart(dt) {
@@ -1184,6 +1316,7 @@ class GameScene extends Phaser.Scene {
     this.bars.forEach(b => b && typeof b.update === 'function' && b.update(dt));
     this.bars = this.bars.filter(b => b && !b.done);
     UI.hud(this);
+    if (I.pr('KeyX')) this.triggerUltimate();   // personalized ultimate (phaser-1.12.0)
     if (I.pr('KeyR') && G.scrollsLeft > 0) {
       const dead = this.heroes.find(h => !h.on);
       if (dead) { dead.on = true; dead.hp = Math.floor(dead.mhp * 0.3); dead.setVisible(true); dead.body.enable = true; const a = this.heroes[this.ai]; dead.x = a.x; dead.y = a.y - 10; dead.body.setVelocity(0, 0); G.scrollsLeft--; this.rebuildCompanions(); }

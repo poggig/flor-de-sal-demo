@@ -4,7 +4,7 @@
       "frame": {
         "x": 0,
         "y": 0,
-        "w": 44,
+        "w": 46,
         "h": 62
       },
       "rotated": false,
@@ -12,11 +12,11 @@
       "spriteSourceSize": {
         "x": 0,
         "y": 0,
-        "w": 44,
+        "w": 46,
         "h": 62
       },
       "sourceSize": {
-        "w": 44,
+        "w": 46,
         "h": 62
       }
     }
@@ -26,7 +26,7 @@
     "image": "enemy_bakaris.png",
     "format": "RGBA8888",
     "size": {
-      "w": 44,
+      "w": 46,
       "h": 62
     },
     "scale": "1"

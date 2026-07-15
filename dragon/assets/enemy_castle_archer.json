@@ -1,6 +1,6 @@
 {
   "frames": {
-    "enemy_knight_idle_0": {
+    "enemy_castle_archer_idle_0": {
       "frame": {
         "x": 0,
         "y": 0,
@@ -23,7 +23,7 @@
   },
   "meta": {
     "app": "game-studio-auto/rd-sheet-atlas",
-    "image": "enemy_knight.png",
+    "image": "enemy_castle_archer.png",
     "format": "RGBA8888",
     "size": {
       "w": 46,

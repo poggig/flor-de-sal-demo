@@ -1,33 +1,33 @@
 {
   "frames": {
-    "enemy_knight_idle_0": {
+    "enemy_mimic_idle_0": {
       "frame": {
         "x": 0,
         "y": 0,
-        "w": 46,
-        "h": 62
+        "w": 52,
+        "h": 48
       },
       "rotated": false,
       "trimmed": false,
       "spriteSourceSize": {
         "x": 0,
         "y": 0,
-        "w": 46,
-        "h": 62
+        "w": 52,
+        "h": 48
       },
       "sourceSize": {
-        "w": 46,
-        "h": 62
+        "w": 52,
+        "h": 48
       }
     }
   },
   "meta": {
     "app": "game-studio-auto/rd-sheet-atlas",
-    "image": "enemy_knight.png",
+    "image": "enemy_mimic.png",
     "format": "RGBA8888",
     "size": {
-      "w": 46,
-      "h": 62
+      "w": 52,
+      "h": 48
     },
     "scale": "1"
   }
