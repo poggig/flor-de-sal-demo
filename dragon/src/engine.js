@@ -29,7 +29,7 @@
 
 // ── World constants (parity with the hand-rolled engine) ──
 const T = 16, CW = 800, CH = 480;
-const GAME_VERSION = 'phaser-1.13.0';
+const GAME_VERSION = 'phaser-1.14.0';
 // The old engine's stat numbers are per-1/60s-frame (spd 2.1 px/frame, jf -9,
 // GR 0.6, MF 10). Arcade works in px/second, so we scale by FPS. Keeping data.js
 // numbers in per-frame units makes the M6 stat port a copy-paste.
@@ -64,47 +64,106 @@ function applyActorScale(spr, bodyW, bodyH, s) {
   spr.body.setSize(bodyW, bodyH);
 }
 
-// ── PROCEDURAL ANIMATION (GTM-10 · phaser-1.13.0) ──
+// ── PROCEDURAL ANIMATION (GTM-10 · phaser-1.13.0; v2 GTM-12 · phaser-1.14.0) ──
 // "Animate the motion ourselves." RD is great at a single clean CHARACTER POSE but its
-// frame-by-frame animation is jerky; so a game can ship ONE crisp pose per actor and let
-// the engine breathe life into it with smooth 60fps transforms keyed to the actor's STATE —
-// idle breathes, run bobs + sways, jump stretches, attack lunges, dash streaks. Visual only:
-// applies setScale (small squash/stretch, ≤8% → negligible body change) + setAngle (Arcade's
-// AABB ignores rotation, so leaning never disturbs collision) on top of the base actorScale.
-// Enabled by GAME_CONFIG.procAnim (true → all heroes+enemies; or { hero:true, enemy:false }).
-// Absent → no-op (byte-identical). Pairs with single-frame atlases (no `anims` frame-swap).
+// frame-by-frame animation is jerky; so a game ships crisp poses and the engine does the
+// MOTION with smooth 60fps transforms keyed to the actor's STATE. Visual only: setScale
+// (small squash/stretch) + setAngle (Arcade's AABB ignores rotation) on top of the base
+// actorScale; the body is re-fixed each frame, so collision is untouched.
+//
+// GAME_CONFIG.procAnim: `true` (all heroes+enemies) or an object:
+//   { hero, enemy,                        // enable per kind
+//     poseSwap: true,                     // v2: swap to a REAL drawn `<base>_attack_0` frame
+//                                         //     during a strike, when the atlas ships one —
+//                                         //     RD draws the poses, the engine does the motion
+//     profiles: { <type>: { weight:'light'|'medium'|'heavy', bobHz, leanDeg, amp } } }
+//                                         // v2: per-TYPE motion personality — a nimble rogue
+//                                         //     bobs fast + leans hard, an armored knight is
+//                                         //     slow + planted. Unlisted types = 'medium'.
+// v2 also adds: a HURT recoil (auto-detected hp drop), a LANDING squash (air→ground), and
+// lerped state transitions (no pops). Absent → no-op (byte-identical, pre-1.13.0 parity).
 function procEnabled(kind) {
   const c = cfg('procAnim', false);
   if (c === true) return true;
   if (c && typeof c === 'object') return !!c[kind];
   return false;
 }
-// Compute (scaleX, scaleY, angleDeg) for a state at time t (facing dir = rt?1:-1). Returns
-// multipliers around 1 and an absolute lean angle (already facing-corrected by the caller).
-function procPose(st, t, atkPhase) {
+const PROC_WEIGHTS = {
+  light:  { hz: 13.5, amp: 1.25, lean: 1.35 },
+  medium: { hz: 11,   amp: 1,    lean: 1 },
+  heavy:  { hz: 8.5,  amp: 0.75, lean: 0.6 },
+};
+function procProfile(spr) {
+  if (spr._procProf) return spr._procProf;
+  const c = cfg('procAnim', false);
+  const p = (c && typeof c === 'object' && c.profiles && c.profiles[spr.customType]) || {};
+  const w = PROC_WEIGHTS[p.weight] || PROC_WEIGHTS.medium;
+  return (spr._procProf = {
+    hz: p.bobHz != null ? p.bobHz : w.hz,
+    amp: p.amp != null ? p.amp : w.amp,
+    lean: p.leanDeg != null ? p.leanDeg / 5 : w.lean,   // leanDeg = absolute run-sway degrees (base 5)
+  });
+}
+// (scaleX, scaleY, angleDeg) for a state at time t, modulated by the actor's profile.
+function procPose(st, t, atkPhase, prof) {
+  const A = prof.amp, L = prof.lean, HZ = prof.hz;
   switch (st) {
-    case 'run': { const b = Math.abs(Math.sin(t * 11)); return { sx: 1 - b * 0.05 + 0.02, sy: 1 + b * 0.07 - 0.03, ang: Math.sin(t * 11) * 5 }; }
-    case 'jump': return { sx: 0.9, sy: 1.12, ang: -7 };
-    case 'fall': return { sx: 1.07, sy: 0.93, ang: 4 };
-    case 'dash': return { sx: 1.22, sy: 0.86, ang: -12 };
-    case 'attack': case 'skill': { const p = Math.max(0, Math.min(1, atkPhase)); const punch = Math.sin(p * Math.PI); return { sx: 1 + punch * 0.14, sy: 1 - punch * 0.06, ang: -18 * punch }; }
-    default: { const br = Math.sin(t * 3); return { sx: 1 - br * 0.012, sy: 1 + br * 0.02, ang: Math.sin(t * 1.4) * 1.2 }; }   // idle breathe
+    case 'run': { const b = Math.abs(Math.sin(t * HZ)); return { sx: 1 + (0.02 - b * 0.05) * A, sy: 1 + (b * 0.07 - 0.03) * A, ang: Math.sin(t * HZ) * 5 * L }; }
+    case 'jump': return { sx: 1 - 0.1 * A, sy: 1 + 0.12 * A, ang: -7 * L };
+    case 'fall': return { sx: 1 + 0.07 * A, sy: 1 - 0.07 * A, ang: 4 * L };
+    case 'dash': return { sx: 1 + 0.22 * A, sy: 1 - 0.14 * A, ang: -12 * L };
+    case 'hurt': return { sx: 1 + 0.06 * A, sy: 1 - 0.09 * A, ang: 10 * L };                 // recoil back
+    case 'land': return { sx: 1 + 0.14 * A, sy: 1 - 0.12 * A, ang: 0 };                      // touchdown squash
+    case 'attack': case 'skill': { const p = Math.max(0, Math.min(1, atkPhase)); const punch = Math.sin(p * Math.PI); return { sx: 1 + punch * 0.14 * A, sy: 1 - punch * 0.06 * A, ang: -18 * punch * L }; }
+    default: { const br = Math.sin(t * 3); return { sx: 1 - br * 0.012 * A, sy: 1 + br * 0.02 * A, ang: Math.sin(t * 1.4) * 1.2 * L }; }   // idle breathe
   }
 }
 function applyProc(spr, dt) {
   spr._procT = (spr._procT || 0) + dt;
   const dir = spr.rt ? 1 : -1;
-  // Heroes carry an explicit `st`; enemies don't — derive it from the attack telegraph + speed.
+  const prof = procProfile(spr);
+  const c = cfg('procAnim', false);
+  // Landing squash: falling last frame + grounded now → a brief touchdown squash.
+  const grounded = spr.body ? (spr.body.blocked.down || spr.body.touching.down) : true;
+  if (spr._procAir && grounded) spr._landT = 0.11;
+  spr._procAir = spr.body ? !grounded : false;
+  if (spr._landT > 0) spr._landT -= dt;
+  // Hurt recoil: auto-detect an hp DROP (works for heroes AND enemies, no hurt() hook).
+  if (spr._procHp != null && spr.hp != null && spr.hp < spr._procHp) spr._procHurtT = 0.22;
+  spr._procHp = spr.hp;
+  if (spr._procHurtT > 0) spr._procHurtT -= dt;
+  // State: heroes carry `st`; enemies derive from the attack telegraph + body speed.
   let st = spr.st;
   if (st === undefined) st = (spr._atkAnimT > 0 ? 'attack' : (spr.body && Math.abs(spr.body.velocity.x) > 8 ? 'run' : 'idle'));
+  const striking = st === 'attack' || st === 'skill';
+  if (!striking && spr._procHurtT > 0) st = 'hurt';
+  else if (!striking && spr._landT > 0 && (st === 'idle' || st === 'run')) st = 'land';
   let atkPhase = 0;
   if (spr.st === 'attack' && spr.atkT != null) atkPhase = 1 - spr.atkT / 0.3;
   else if (spr.st === 'skill' && spr.skillT != null) atkPhase = 1 - spr.skillT / 0.5;
   else if (spr._atkAnimT > 0) atkPhase = 1 - spr._atkAnimT / ENEMY_ATTACK_POSE;
-  const p = procPose(st, spr._procT, atkPhase);
+  // POSE-SWAP (v2): during a strike, display the atlas's REAL drawn attack pose if it ships one.
+  if (c && typeof c === 'object' && c.poseSwap && spr.texture && spr.frame) {
+    if (spr._frameBase === undefined) {
+      const fn = spr.frame.name || '';
+      const m = fn.match(/^(.*)_(idle|walk|attack|jump)_\d+$/);
+      spr._frameBase = m ? m[1] : null; spr._idleFrame = m ? fn : null;
+    }
+    if (spr._frameBase) {
+      const atkFrame = spr._frameBase + '_attack_0';
+      if (striking && spr.texture.has(atkFrame)) { if (spr.frame.name !== atkFrame) spr.setFrame(atkFrame); }
+      else if (!striking && spr._idleFrame && spr.frame.name !== spr._idleFrame) spr.setFrame(spr._idleFrame);
+    }
+  }
+  const p = procPose(st, spr._procT, atkPhase, prof);
+  // Lerp toward the target pose — smooth state transitions, no pops (snappy k).
+  const k = Math.min(1, dt * 18);
+  spr._pSx = spr._pSx == null ? p.sx : spr._pSx + (p.sx - spr._pSx) * k;
+  spr._pSy = spr._pSy == null ? p.sy : spr._pSy + (p.sy - spr._pSy) * k;
+  spr._pAng = spr._pAng == null ? p.ang : spr._pAng + (p.ang - spr._pAng) * k;
   const base = spr._baseScale || 1;
-  spr.setScale(base * p.sx, base * p.sy);             // squash/stretch only; facing stays via setFlipX
-  spr.setAngle(p.ang * dir);                          // lean is facing-corrected
+  spr.setScale(base * spr._pSx, base * spr._pSy);     // squash/stretch only; facing stays via setFlipX
+  spr.setAngle(spr._pAng * dir);                      // lean is facing-corrected
   if (spr.body) spr.body.setSize(spr._baseBW || spr.body.width, spr._baseBH || spr.body.height);   // keep collision box fixed
 }
 

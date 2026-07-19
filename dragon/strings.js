@@ -21,7 +21,7 @@ Lang.strings = {
     fish_caught: 'Fish caught!', fish_missed: 'Missed!', fish_round: 'Round', muted: '[M] MUTED', music: '[M] music',
     talk_prompt: '[Z] Talk',
     fishing_hint: 'Press SPACE when the marker hits the green zone!',
-    the_end: 'THE END', credits: 'Chronicles of Azurerune — Book One Complete', press_any: 'Press SPACE for title',
+    the_end: 'THE END', credits: 'Chronicles of Azurerune — Book One Complete', credits_party: 'Kote · Minerva · Elber · Nesta · Nick', press_any: 'Press SPACE for title',
     narrator: 'Narrator', tutorial: 'Tutorial', guard: 'Guard',
     // ── Speaker display names (engine renders d(speaker,key) via Lang.t(speaker)) ──
     kote: 'Kote', minerva: 'Minerva', elber: 'Elber', nesta: 'Nesta', nick: 'Nick',
@@ -30,6 +30,8 @@ Lang.strings = {
     // ── NPC standing-label names (talkNPCs draws Lang.t(name)) ──
     npc_masked: '???', npc_levna: 'Levna', npc_clystran: 'Clystran', npc_becklin: 'Becklin',
     npc_cudgel: 'Cudgel', npc_tem: 'Tem Temble', npc_armory: 'Armory Master',
+    // L1A3 student speakers (explicit keys so a future ES/IT pass localizes cleanly)
+    Levna: 'Levna', Clystran: 'Clystran', Darrett: 'Darrett', Andir: 'Andir',
     // ═══════════ LEVEL 1 — SCHOOL DAY ═══════════
     l1a1_hint: 'Act 1: Final Exam — defeat Bakaris and his crew!',
     l1a1_1: 'Azurerune Fortress — the Tribunal watches from above.',

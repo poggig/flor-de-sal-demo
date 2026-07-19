@@ -75,11 +75,27 @@ const FallbackPalettes = {
 // - heroBody [22,64]: the hero collision body inside the 56×64 RD atlas cell (feet flush).
 const GAME_CONFIG = {
   langButtons: 'off', scrollsPerRun: 2, physics: 'arcade', hazardDamage: true,
-  // PROCEDURAL animation (phaser-1.13.0): each hero/enemy ships ONE clean RD pose; the
-  // engine animates the MOTION with smooth 60fps transforms (idle breathe, walk bob/sway,
-  // attack lunge, jump stretch) — RD makes the character, we make it move. Fixes the clunky
-  // 8-frame RD animations + the static-vs-animated inconsistency (all actors animate the same way).
-  procAnim: { hero: true, enemy: true },
+  // PROCEDURAL animation v2 (phaser-1.14.0): each actor ships crisp RD POSES; the engine
+  // does the MOTION. v2: strikes POSE-SWAP to a real drawn attack pose (idle+attack 2-frame
+  // atlases), and each actor moves with a weight PERSONALITY — the rogue is quick and leaning,
+  // the armored knight slow and planted, the dragon ponderous. + hurt recoil, landing squash.
+  procAnim: {
+    hero: true, enemy: true, poseSwap: true,
+    profiles: {
+      // cast
+      kote: { weight: 'light' }, nesta: { weight: 'light', bobHz: 10 },
+      elber: { weight: 'medium' }, nick: { weight: 'medium', amp: 0.9 },
+      minerva: { weight: 'heavy' },
+      // foes — nimble skirmishers vs planted armor vs ponderous bulk
+      goblin: { weight: 'light' }, bakaris: { weight: 'light' }, darkmantle: { weight: 'light', amp: 0.7 },
+      animated_sword: { weight: 'light', amp: 0.8 }, spectator: { weight: 'light', amp: 0.7 },
+      castle_archer: { weight: 'medium' }, draconian: { weight: 'medium' }, draconian_kapak: { weight: 'medium' },
+      hideout_fighter: { weight: 'medium' }, gauntlet: { weight: 'medium' },
+      knight: { weight: 'heavy' }, castle_soldier: { weight: 'heavy' }, mimic: { weight: 'heavy' },
+      lib_censor: { weight: 'heavy' }, boilerdrak: { weight: 'heavy' }, ogre: { weight: 'heavy' },
+      draconian_sivak: { weight: 'heavy' }, kansaldi: { weight: 'heavy', amp: 0.9 },
+    },
+  },
   actorScale: { hero: 1.2, enemy: 1.2, kansaldi: 1.6, ogre: 1.5, boilerdrak: 1.3, spectator: 1.35, draconian_sivak: 1.4, draconian_kapak: 1.25, bakaris: 1.2 },
   heroBody: [22, 64],
   bgParallax: 0.5,
@@ -118,7 +134,9 @@ function bounds(tm, W, H) { MapKit.block(tm, 0, H - 14, 1, 11); MapKit.block(tm,
 // LEVEL 1 — CASTLE (arena / hallway / stealth)
 function buildCastleArena(tm, W, H) {
   MapKit.groundBand(tm, W, H, 3);
-  MapKit.platform(tm, 22, H - 8, 6); MapKit.platform(tm, 46, H - 10, 6); MapKit.platform(tm, 70, H - 8, 6);
+  // Platforms sit clear of the backdrop's focal throne zone (visual QA: a platform used
+  // to terminate inside the throne art at spawn camera) — shifted/shortened.
+  MapKit.platform(tm, 19, H - 8, 5); MapKit.platform(tm, 48, H - 10, 5); MapKit.platform(tm, 70, H - 8, 6);
   bounds(tm, W, H);
 }
 // Lv1 Act4 stealth: three one-way platform rows the guard hops (rows H-5, H-8, H-11).

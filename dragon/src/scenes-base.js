@@ -168,8 +168,10 @@ class DragonScene extends GameScene {
           g.fillStyle(0x3a2a20, 1).fillRect(-6, -44, 12, 4);    // hair
           cont.add(g);
         }
-        const label = this.add.text(x, y - 52, Lang.t(n.name), { fontFamily: 'monospace', fontSize: '9px', color: '#e8d8a8' }).setOrigin(0.5).setDepth(3);
-        const prompt = this.add.text(x, y - 64, '', { fontFamily: 'monospace', fontSize: '11px', color: '#ffee88' }).setOrigin(0.5).setDepth(3);
+        // Anchor labels ABOVE the sprite's head (visual QA: they used to land across faces —
+        // NPC sprites render ~79px tall at 0.82 scale, origin bottom).
+        const label = this.add.text(x, y - 86, Lang.t(n.name), { fontFamily: 'monospace', fontSize: '9px', color: '#f0e2c0', stroke: '#000', strokeThickness: 2 }).setOrigin(0.5).setDepth(3);
+        const prompt = this.add.text(x, y - 99, '', { fontFamily: 'monospace', fontSize: '11px', color: '#ffee88', stroke: '#000', strokeThickness: 2 }).setOrigin(0.5).setDepth(3);
         return { x, y, name: n.name, lines: n.lines, talked: false, cont, label, prompt };
       });
     }

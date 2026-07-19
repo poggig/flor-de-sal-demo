@@ -55,7 +55,9 @@ class FollowFamiliar {
     if (!hero || !this.go) return;
     this._bob += dt;
     const feet = hero.body ? hero.body.height / 2 : 18;
-    const tx = hero.x + (hero.rt ? -this.offsetX : this.offsetX);
+    // Clamp the trail target inside the world (visual QA: a familiar trailing a hero at
+    // the left spawn got pinned half-offscreen at the world edge).
+    const tx = Math.max(14, hero.x + (hero.rt ? -this.offsetX : this.offsetX));
     const ty = hero.y + feet + this.offsetY;
     const dx = tx - this.x, dy = ty - this.y;
     const spd = Math.min(this.speed, Math.sqrt(dx * dx + dy * dy) * 6);
